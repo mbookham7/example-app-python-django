@@ -14,9 +14,9 @@ Below are step by step instructions to deploy the application across three Kuber
 export azregion="uksouth"
 export clus1="mb-aks-cluster-1"
 export aws_region="eu-west-1"
-export clus2="mb-eks-cluster-1"
+export clus2="arn:aws:eks:eu-west-1:541263489771:cluster/mb-eks-cluster-1"
 export gcp_region="europe-west4"
-export clus3="mb-gke-cluster-1"
+export clus3="gke_cockroach-bookham_europe-west4_mb-gke-cluster-1"
 ```
 
 2. Create a folder called certs and add your `ca.crt`,`client.root.crt` and `client.root.key` to this folder. we will need these to connect to the database server.
@@ -46,35 +46,36 @@ CREATE DATABASE django;
 6. Deploy the application into each of the regions.
 ```
 kubectl apply -f ./kubernetes/deployment.yaml --context $clus1 --namespace $azregion
-kubectl apply -f ./kubernetes/deployment.yaml --context $clus2 --namespace $awsregion
-kubectl apply -f ./kubernetes/deployment.yaml --context $clus3 --namespace $gcpregion
+kubectl apply -f ./kubernetes/deployment.yaml --context $clus2 --namespace $aws_region
+kubectl apply -f ./kubernetes/deployment.yaml --context $clus3 --namespace $gcp_region
 ```
 
 7. Retrieve the Loadbalancer IP address for each of the regions.
 ```
-kubectl get svc django-service --context $clus1 --namespace $azregion
-kubectl get svc django-service --context $clus2 --namespace $awsregion
-kubectl get svc django-service --context $clus3 --namespace $gcpregion
+
+az_app_ip=$(kubectl get svc django-service --context $clus1 --namespace $azregion -o json | jq -r '.status.loadBalancer.ingress[0].ip')
+aws_app_ip=$(kubectl get svc django-service --context $clus2 --namespace $aws_region -o json | jq -r '.status.loadBalancer.ingress[0].hostname')
+gcp_app_ip=$(kubectl get svc django-service  --context $clus3 --namespace $gcp_region -o json | jq -r '.status.loadBalancer.ingress[0].ip')
 ```
 
 8. Use the API of the application to add three entries into the Database. You will notice the second field is cloud with a different value to indicate the cloud it was deployed into.
 ```
 curl --header "Content-Type: application/json" \
 --request POST \
---data '{"name":"Carl", "cloud":"azure"}' http://<external_ip_1>:8000/customer/
+--data '{"name":"Carl", "cloud":"azure"}' http://$az_app_ip:8000/customer/
 
 curl --header "Content-Type: application/json" \
 --request POST \
---data '{"name":"Mike", "cloud":"aws"}' http://<external_ip_2>:8000/customer/
+--data '{"name":"Mike", "cloud":"aws"}' http://$aws_app_ip:8000/customer/
 
 curl --header "Content-Type: application/json" \
 --request POST \
---data '{"name":"Dan", "cloud":"gcp"}' http://<external_ip_3>:8000/customer/
+--data '{"name":"Dan", "cloud":"gcp"}' http://$gcp_app_ip:8000/customer/
 ```
 
 9. Retrieve the data from from the database to ensure that it has been written.
 ```
-curl http://<external_ip_1>:8000/customer/
+curl http://$az_app_ip:8000/customer/
 ```
 
 10. Set the primary region for the database django.
@@ -185,3 +186,8 @@ SHOW RANGE FROM TABLE cockroach_example_customers FOR ROW ('europe-west4','67972
 
 SHOW RANGE FROM TABLE cockroach_example_customers FOR ROW ('eu-west-1','a61cf64f-2bd5-4529-b773-557729c76480');
 ```
+
+
+
+
+kubectl get nodes -o json | jq '.items[] | .status .addresses[] | select(.type=="ExternalIP") | .address'
