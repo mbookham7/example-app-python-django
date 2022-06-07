@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-deployment
+  labels:
+    app: django
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: django
+  template:
+    metadata:
+      labels:
+        app: django
+    spec:
+      containers:
+      - name: django
+        image: mikebookhamcap/example-app-python-django:v0.11mr
+        ports:
+        - containerPort: 8080
+      initContainers:
+      - name: init-django-make
+        image: mikebookhamcap/example-app-python-django:v0.11mr
+        command: ["python", "./cockroach_example/manage.py", "makemigrations", "cockroach_example"]
+      - name: init-django-migrate
+        image: mikebookhamcap/example-app-python-django:v0.11mr
+        command: ["python", "./cockroach_example/manage.py", "migrate"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-service
+spec:
+  selector:
+    app: django
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8080
+  type: LoadBalancer
