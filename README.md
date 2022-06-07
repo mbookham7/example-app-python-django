@@ -2,7 +2,7 @@
 
 In this repo I have taken the Django example from the CockroachDB docs [here](https://www.cockroachlabs.com/docs/stable/build-a-python-app-with-cockroachdb-django.html) and adapted it to take advantage of the CockroachDB multi region capabilities.
 
-I have updated the code to allow for an additional field to be submitted to the customers api. This additional field allows you to specify the cloud that the request is being posted from. This allows us to then pin the data to specific nodes in our CockroachDB cluster.
+I have updated the code to allow for an additional field to be submitted to the customers api. This additional field allows you to specify the cloud that the request is being posted from. This allows us to then pin the data to a specific locality in our CockroachDB cluster.
 
 This is a very simple example purely to demonstrate the CockroachDB multi regional capabilities.
 
@@ -11,7 +11,7 @@ Below are step by step instructions to deploy the application across three Kuber
 
 1. Create the required environment variables.
 ```
-export azregion="$azregion"
+export azregion="uksouth"
 export clus1="mb-aks-cluster-1"
 export aws_region="eu-west-1"
 export clus2="mb-eks-cluster-1"
