@@ -149,6 +149,31 @@ ALTER DATABASE django PLACEMENT RESTRICTED;
 SELECT * FROM system.replication_constraint_stats WHERE violating_ranges > 0;
 ```
 
+## Clean Up
+
+Run the following command to cleanup.
+```
+kubectl delete -f ./kubernetes/deployment.yaml --context $clus1 --namespace $azregion
+kubectl delete -f ./kubernetes/deployment.yaml --context $clus2 --namespace $awsregion
+kubectl delete -f ./kubernetes/deployment.yaml --context $clus3 --namespace $gcpregion
+```
+Then exec back into our secure client and drop the database.
+```
+kubectl exec -it cockroachdb-client-secure \
+-n $azregion \
+--context $clus1 \
+-- ./cockroach sql \
+--certs-dir=/cockroach-certs \
+--host=cockroachdb-public
+```
+Change the database to another database then drop `django` databases.
+```
+USE defaultdb;
+
+DROP django;
+```
+
+---
 
 Further testing could be as below to look at specific ranges an their placement within the cluster.
 ```
