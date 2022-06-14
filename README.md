@@ -56,6 +56,9 @@ kubectl apply -f ./kubernetes/deployment.yaml --context $clus3 --namespace $gcp_
 az_app_ip=$(kubectl get svc django-service --context $clus1 --namespace $azregion -o json | jq -r '.status.loadBalancer.ingress[0].ip')
 aws_app_ip=$(kubectl get svc django-service --context $clus2 --namespace $aws_region -o json | jq -r '.status.loadBalancer.ingress[0].hostname')
 gcp_app_ip=$(kubectl get svc django-service  --context $clus3 --namespace $gcp_region -o json | jq -r '.status.loadBalancer.ingress[0].ip')
+echo $az_app_ip
+echo $aws_app_ip
+echo $gcp_app_ip
 ```
 
 8. Use the API of the application to add three entries into the Database. You will notice the second field is cloud with a different value to indicate the cloud it was deployed into.
@@ -78,15 +81,27 @@ curl --header "Content-Type: application/json" \
 curl http://$az_app_ip:8000/customer/
 ```
 
-10. Set the primary region for the database django.
+10. Exec back into our SQL Client pod.
+```
+kubectl exec -it cockroachdb-client-secure \
+-n $azregion \
+--context $clus1 \
+-- ./cockroach sql \
+--certs-dir=/cockroach-certs \
+--host=cockroachdb-public
+```
+
+11. Set the primary region for the database django.
 ```
 ALTER DATABASE django PRIMARY REGION "uksouth";
 ALTER DATABASE django ADD REGION "eu-west-1";
 ALTER DATABASE django ADD REGION "europe-west4";
 ```
 
-11. For the table `cockroach_example_customers`, the right table locality for optimizing access to their data is `REGIONAL BY ROW`. These statements use a `CASE` statement to put data for a given cloud in the right region.
+12. For the table `cockroach_example_customers`, the right table locality for optimizing access to their data is `REGIONAL BY ROW`. These statements use a `CASE` statement to put data for a given cloud in the right region.
 ```
+USE django;
+
 ALTER TABLE cockroach_example_customers ADD COLUMN region crdb_internal_region AS (
   CASE WHEN cloud = 'aws' THEN 'eu-west-1'
        WHEN cloud = 'azure' THEN 'uksouth'
@@ -97,12 +112,12 @@ ALTER TABLE cockroach_example_customers ALTER COLUMN REGION SET NOT NULL;
 ALTER TABLE cockroach_example_customers  SET LOCALITY REGIONAL BY ROW AS "region";
 ```
 
-12. Next, run a replication report to see which ranges are still not in compliance with your desired domiciling.
+13. Next, run a replication report to see which ranges are still not in compliance with your desired domiciling.
 ```
 SELECT * FROM system.replication_constraint_stats WHERE violating_ranges > 0;
 ```
 
-13. Next, run the query suggested in the Replication Reports documentation that should show which database and table names contain the violating_ranges.
+14. Next, run the query suggested in the Replication Reports documentation that should show which database and table names contain the violating_ranges.
 ```
 WITH
     partition_violations
@@ -136,17 +151,17 @@ WITH
 SELECT * FROM report;
 ```
 
-14. Apply stricter replica placement settings
+15. Apply stricter replica placement settings
 ```
 SET enable_multiregion_placement_policy=on;
 ```
 
-15. Next, use the ALTER DATABASE ... PLACEMENT RESTRICTED statement to disable non-voting replicas for regional tables.
+16. Next, use the ALTER DATABASE ... PLACEMENT RESTRICTED statement to disable non-voting replicas for regional tables.
 ```
 ALTER DATABASE django PLACEMENT RESTRICTED;
 ```
 
-16. Now that you have restricted the placement of non-voting replicas for all regional tables, you can run another replication report to see the effects:
+17. Now that you have restricted the placement of non-voting replicas for all regional tables, you can run another replication report to see the effects:
 (This may take a couple of mins to have an affect.)
 ```
 SELECT * FROM system.replication_constraint_stats WHERE violating_ranges > 0;
@@ -157,8 +172,8 @@ SELECT * FROM system.replication_constraint_stats WHERE violating_ranges > 0;
 Run the following command to cleanup.
 ```
 kubectl delete -f ./kubernetes/deployment.yaml --context $clus1 --namespace $azregion
-kubectl delete -f ./kubernetes/deployment.yaml --context $clus2 --namespace $awsregion
-kubectl delete -f ./kubernetes/deployment.yaml --context $clus3 --namespace $gcpregion
+kubectl delete -f ./kubernetes/deployment.yaml --context $clus2 --namespace $aws_region
+kubectl delete -f ./kubernetes/deployment.yaml --context $clus3 --namespace $gcp_region
 ```
 Then exec back into our secure client and drop the database.
 ```
@@ -173,7 +188,7 @@ Change the database to another database then drop `django` databases.
 ```
 USE defaultdb;
 
-DROP django;
+DROP DATABASE django CASCADE;
 ```
 
 ---
